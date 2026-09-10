@@ -6,12 +6,14 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.Registries;
-import net.minecraft.screen.slot.SlotActionType;
+
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * AutoMine+ — Tự động đào và dùng /sellgui để bán item mục tiêu khi balo đầy.
@@ -64,7 +66,7 @@ public class AutoMine extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
-        if (mc.player == null || mc.world == null) return;
+        if (mc.player == null || mc.level == null) return;
         if (timer > 0) { timer--; return; }
 
         switch (currentState) {
@@ -73,8 +75,8 @@ public class AutoMine extends Module {
                 break;
 
             case START_MINE:
-                if (mc.currentScreen != null) mc.player.closeHandledScreen();
-                ChatUtils.sendPlayerMsg("#mine " + Registries.ITEM.getId(mineBlock.get()).toString());
+                if (mc.screen != null) mc.player.closeContainer();
+                ChatUtils.sendPlayerMsg("#mine " + BuiltInRegistries.ITEM.getKey(mineBlock.get()).toString());
                 timer = 60;
                 currentState = State.MINING;
                 break;
@@ -96,20 +98,20 @@ public class AutoMine extends Module {
                 break;
 
             case OPEN_SELLGUI:
-                if (mc.currentScreen != null) mc.player.closeHandledScreen();
+                if (mc.screen != null) mc.player.closeContainer();
                 ChatUtils.sendPlayerMsg("/sellgui");
                 timer = 40;
                 currentState = State.SELLGUI_GUI;
                 break;
 
             case SELLGUI_GUI:
-                if (!(mc.currentScreen instanceof HandledScreen)) {
+                if (!(mc.screen instanceof AbstractContainerScreen)) {
                     currentState = State.START_MINE;
                     break;
                 }
 
-                if (!doSellTargetItems((HandledScreen<?>) mc.currentScreen)) {
-                    mc.player.closeHandledScreen();
+                if (!doSellTargetItems((AbstractContainerScreen<?>) mc.screen)) {
+                    mc.player.closeContainer();
                     timer = 15;
                     currentState = State.START_MINE;
                 }
@@ -117,15 +119,17 @@ public class AutoMine extends Module {
         }
     }
 
-    private boolean doSellTargetItems(HandledScreen<?> screen) {
-        var h = screen.getScreenHandler();
+    private boolean doSellTargetItems(AbstractContainerScreen<?> screen) {
+        AbstractContainerMenu h = screen.getMenu();
         int cSz = h.slots.size() - 36;
         Item target = getEffectiveCollectItem();
 
         for (int i = cSz; i < h.slots.size(); i++) {
-            ItemStack st = h.getSlot(i).getStack();
+            ItemStack st = h.getSlot(i).getItem();
             if (!st.isEmpty() && st.getItem() == target) {
-                mc.interactionManager.clickSlot(h.syncId, i, 0, SlotActionType.QUICK_MOVE, mc.player);
+                if (mc.gameMode != null) {
+                    mc.gameMode.handleInventoryMouseClick(h.containerId, i, 0, ClickType.QUICK_MOVE, mc.player);
+                }
                 timer = actionDelay.get();
                 return true;
             }
@@ -135,7 +139,7 @@ public class AutoMine extends Module {
 
     private boolean isInventoryFull() {
         for (int i = 0; i < 36; i++) {
-            if (mc.player.getInventory().getStack(i).isEmpty()) {
+            if (mc.player.getInventory().getItem(i).isEmpty()) {
                 return false;
             }
         }
@@ -148,12 +152,14 @@ public class AutoMine extends Module {
     }
 
     private boolean hasSilkTouchInHotbar() {
-        if (mc.player == null || mc.world == null) return false;
+        if (mc.player == null || mc.level == null) return false;
         for (int i = 0; i < 9; i++) {
-            ItemStack s = mc.player.getInventory().getStack(i);
+            ItemStack s = mc.player.getInventory().getItem(i);
             if (s.isEmpty()) continue;
-            
-            if (s.getEnchantments().toString().toLowerCase().contains("silk_touch")) return true;
+
+            if (s.getEnchantments().toString().toLowerCase().contains("silk_touch")) {
+                return true;
+            }
         }
         return false;
     }
